@@ -4,6 +4,10 @@ local.env
 .env*
 !.env.example
 
-# AI Agent
+# AI Agent & Workspace Rules
 AI_Agent/
 AI_Agents/
+AGENTS.md
+.ai/
+.kiro/
+.claude
