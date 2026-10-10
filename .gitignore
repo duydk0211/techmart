@@ -15,6 +15,8 @@ AGENTS.md
 # IDE
 .idea/
 *.iml
+.idea
+
 # Build output
 target/
 **/target/
