@@ -11,3 +11,10 @@ AGENTS.md
 .ai/
 .kiro/
 .claude
+
+# IDE
+.idea/
+*.iml
+# Build output
+target/
+**/target/
