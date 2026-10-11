@@ -17,15 +17,16 @@
 
     <modules>
         <module>shared-library</module>
-        <!-- Các module con sẽ được kích hoạt khi triển khai ở các Phase tiếp theo:
         <module>core-service</module>
         <module>gateway-services</module>
+        <!-- Các module con sẽ được kích hoạt khi triển khai ở các Phase tiếp theo:
         <module>notification-service</module>
         -->
     </modules>
 
     <properties>
         <java.version>21</java.version>
+        <lombok.version>1.18.38</lombok.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <jjwt.version>0.12.6</jjwt.version>
