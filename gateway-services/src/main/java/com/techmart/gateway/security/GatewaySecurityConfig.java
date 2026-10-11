@@ -49,6 +49,22 @@ public class GatewaySecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                
+                // --- Phase 2 Public Endpoints ---
+                .requestMatchers(HttpMethod.GET, "/api/v1/categories/tree").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/brands").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/branches").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
+
+                // --- Phase 2 Protected Staff & Admin Endpoints ---
+                .requestMatchers(HttpMethod.GET, "/api/v1/branches/*/inventory").hasAnyRole("STAFF", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/branches").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/brands").hasRole("ADMIN")
+                .requestMatchers("/api/v1/categories/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAnyRole("STAFF", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/inventory/adjust").hasAnyRole("STAFF", "ADMIN")
+
+                // --- Phase 1 User & Auth Endpoints ---
                 .requestMatchers("/api/v1/users/me/addresses/**").hasRole("CUSTOMER")
                 .requestMatchers("/api/v1/auth/logout", "/api/v1/auth/change-password", "/api/v1/users/me/**").authenticated()
                 .anyRequest().denyAll()
