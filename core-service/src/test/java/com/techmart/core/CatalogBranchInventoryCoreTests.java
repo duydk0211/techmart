@@ -23,6 +23,10 @@ import com.techmart.core.entity.branch.BranchEntity;
 import com.techmart.core.entity.catalog.CategoryEntity;
 import com.techmart.core.entity.inventory.InventoryEntity;
 import com.techmart.core.entity.inventory.InventoryHistoryEntity;
+import com.techmart.core.repository.cart.CartItemRepository;
+import com.techmart.core.repository.cart.CartRepository;
+import com.techmart.core.repository.order.OrderItemRepository;
+import com.techmart.core.repository.order.OrderRepository;
 import com.techmart.core.repository.branch.BranchRepository;
 import com.techmart.core.repository.catalog.BrandRepository;
 import com.techmart.core.repository.catalog.CategoryRepository;
@@ -135,8 +139,24 @@ class CatalogBranchInventoryCoreTests {
     @Autowired
     private InventoryHistoryRepository inventoryHistoryRepository;
 
+    @Autowired(required = false)
+    private OrderItemRepository orderItemRepository;
+
+    @Autowired(required = false)
+    private OrderRepository orderRepository;
+
+    @Autowired(required = false)
+    private CartItemRepository cartItemRepository;
+
+    @Autowired(required = false)
+    private CartRepository cartRepository;
+
     @BeforeEach
     void setUp() {
+        if (orderItemRepository != null) orderItemRepository.deleteAll();
+        if (orderRepository != null) orderRepository.deleteAll();
+        if (cartItemRepository != null) cartItemRepository.deleteAll();
+        if (cartRepository != null) cartRepository.deleteAll();
         inventoryHistoryRepository.deleteAll();
         inventoryRepository.deleteAll();
         productImageRepository.deleteAll();

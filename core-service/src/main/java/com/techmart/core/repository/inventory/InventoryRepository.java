@@ -30,4 +30,12 @@ public interface InventoryRepository extends JpaRepository<InventoryEntity, UUID
     @Modifying
     @Query("UPDATE InventoryEntity i SET i.quantityReserved = i.quantityReserved + :requestedQty, i.version = i.version + 1, i.updatedAt = :now WHERE i.branch.id = :branchId AND i.variant.id = :variantId AND (i.quantityOnHand - i.quantityReserved) >= :requestedQty")
     int reserveStock(@Param("branchId") UUID branchId, @Param("variantId") UUID variantId, @Param("requestedQty") int requestedQty, @Param("now") Instant now);
+
+    @Modifying
+    @Query("UPDATE InventoryEntity i SET i.quantityReserved = i.quantityReserved - :qty, i.version = i.version + 1, i.updatedAt = :now WHERE i.branch.id = :branchId AND i.variant.id = :variantId AND i.quantityReserved >= :qty")
+    int releaseStock(@Param("branchId") UUID branchId, @Param("variantId") UUID variantId, @Param("qty") int qty, @Param("now") Instant now);
+
+    @Modifying
+    @Query("UPDATE InventoryEntity i SET i.quantityOnHand = i.quantityOnHand - :qty, i.quantityReserved = i.quantityReserved - :qty, i.version = i.version + 1, i.updatedAt = :now WHERE i.branch.id = :branchId AND i.variant.id = :variantId AND i.quantityOnHand >= :qty AND i.quantityReserved >= :qty")
+    int deductStockOnDelivery(@Param("branchId") UUID branchId, @Param("variantId") UUID variantId, @Param("qty") int qty, @Param("now") Instant now);
 }

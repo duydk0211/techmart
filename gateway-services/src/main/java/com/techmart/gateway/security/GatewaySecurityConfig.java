@@ -64,6 +64,17 @@ public class GatewaySecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAnyRole("STAFF", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/inventory/adjust").hasAnyRole("STAFF", "ADMIN")
 
+                // --- Phase 3 Cart Endpoints ---
+                .requestMatchers("/api/v1/cart/**").hasRole("CUSTOMER")
+
+                // --- Phase 3 Order Endpoints ---
+                .requestMatchers(HttpMethod.POST, "/api/v1/orders").hasAnyRole("CUSTOMER", "STAFF")
+                .requestMatchers(HttpMethod.GET, "/api/v1/orders/me").hasRole("CUSTOMER")
+                .requestMatchers(HttpMethod.GET, "/api/v1/orders").hasAnyRole("STAFF", "ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/orders/*/status").hasAnyRole("STAFF", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/orders/*/cancel").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/v1/orders/*").authenticated()
+
                 // --- Phase 1 User & Auth Endpoints ---
                 .requestMatchers("/api/v1/users/me/addresses/**").hasRole("CUSTOMER")
                 .requestMatchers("/api/v1/auth/logout", "/api/v1/auth/change-password", "/api/v1/users/me/**").authenticated()
