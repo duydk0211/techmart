@@ -1,0 +1,32 @@
+name: TechMart CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - techmart-uat
+      - main
+  push:
+    branches:
+      - techmart-uat
+      - main
+
+jobs:
+  build-and-test:
+    name: Build & Run All Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Verify Multi-Module Build & Execute Tests
+        run: |
+          mvn clean verify -B
