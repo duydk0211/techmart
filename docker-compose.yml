@@ -1,0 +1,185 @@
+version: '3.8'
+
+# ====================================================================================================
+# PROJECT: TECHMART — ELECTRONIC STORE MANAGEMENT SYSTEM
+# FILE: docker-compose.yml (HẠ TẦNG DỊCH VỤ DÙNG CHUNG CHO LOCAL DEV & TESTING)
+# INCLUDED SERVICES:
+#   1. PostgreSQL 16 (Port 5432) - Cơ sở dữ liệu chính 15 bảng (Tự động nạp init_schema.sql)
+#   2. Redis 7 (Port 6379) - Bộ nhớ đệm & Debounce (Cache, Idempotency lock, System Health)
+#   3. MinIO (Port 9000 S3 API, Port 9001 Console) - Lưu trữ tệp tin đối tượng S3-compatible
+#   4. MinIO Init - Tự động tạo Bucket 'techmart-media' và cấp quyền Download công khai
+#   5. Apache Kafka KRaft (Port 9092) - Message Broker hướng sự kiện (Không cần Zookeeper)
+#   6. Kafka UI (Port 8085) - Giao diện Web quản lý Topics, Messages, Consumer Groups
+#   7. Mailpit (Port 1025 SMTP, Port 8025 Web UI) - Giả lập SMTP Mail Server xem email trực quan
+# ====================================================================================================
+
+services:
+
+  # --------------------------------------------------------------------------------------------------
+  # 1. POSTGRESQL 16 (Cơ sở dữ liệu chính)
+  # --------------------------------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: techmart-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-techmart}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/scriptDB/init_schema.sql:/docker-entrypoint-initdb.d/init_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d techmart"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - techmart-network
+
+  # --------------------------------------------------------------------------------------------------
+  # 2. REDIS 7 (Bộ nhớ đệm & Phân tán)
+  # --------------------------------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: techmart-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ""
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - techmart-network
+
+  # --------------------------------------------------------------------------------------------------
+  # 3. MINIO (Object Storage tương thích AWS S3)
+  # --------------------------------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: techmart-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API Endpoint (Spring Boot kết nối)
+      - "9001:9001"   # Web Console Dashboard (Quản trị viên xem ảnh)
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-techmart@2026}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - techmart-network
+
+  # --------------------------------------------------------------------------------------------------
+  # 4. MINIO INIT (Tự động khởi tạo các Buckets riêng biệt & Policy công khai)
+  # --------------------------------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: techmart-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 admin techmart@2026;
+      for bucket in techmart-products techmart-brands techmart-avatars techmart-banners; do
+        /usr/bin/mc mb --ignore-existing local/\$$bucket;
+        /usr/bin/mc anonymous set download local/\$$bucket;
+        echo \"Bucket \$$bucket đã được tạo và cấp quyền download công khai!\";
+      done;
+      exit 0;
+      "
+    networks:
+      - techmart-network
+
+  # --------------------------------------------------------------------------------------------------
+  # 5. APACHE KAFKA (KRaft Mode - Không cần Zookeeper)
+  # --------------------------------------------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.7.1
+    container_name: techmart-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"   # Port kết nối từ máy Host (Spring Boot Producer / Consumer)
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,DOCKER://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,DOCKER://kafka:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - techmart-network
+
+  # --------------------------------------------------------------------------------------------------
+  # 6. KAFKA UI (Web Dashboard trực quan xem Topics, Messages, Consumer Groups)
+  # --------------------------------------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: techmart-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "8085:8080"   # Port 8085 (Tránh xung đột với Gateway port 8080!)
+    environment:
+      KAFKA_CLUSTERS_0_NAME: techmart-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094
+    depends_on:
+      - kafka
+    networks:
+      - techmart-network
+
+  # --------------------------------------------------------------------------------------------------
+  # 7. MAILPIT (Giả lập SMTP Mail Server & Hộp thư đến Web UI cho Dev/Test)
+  # --------------------------------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: techmart-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP server port (Spring Boot gửi mail vào đây)
+      - "8025:8025"   # Web UI xem email (Mở trình duyệt xem giao diện thư đến)
+    volumes:
+      - mailpit_data:/data
+    networks:
+      - techmart-network
+
+# ====================================================================================================
+# NETWORKS & VOLUMES
+# ====================================================================================================
+networks:
+  techmart-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  kafka_data:
+  mailpit_data:

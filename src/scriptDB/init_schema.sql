@@ -2,7 +2,7 @@
 -- PROJECT: TECHMART — ELECTRONIC STORE MANAGEMENT SYSTEM
 -- SCRIPT: init_schema.sql (MASTER DATABASE DDL SPECIFICATION)
 -- DATABASE ENGINE: PostgreSQL 16+
--- DESCRIPTION: Complete schema definition for 14 core tables, constraints, extensions, and indexes.
+-- DESCRIPTION: Complete schema definition for 15 core tables, constraints, extensions, and indexes.
 -- NOTE: Seed data excluded per plan — data will be populated and tested via REST APIs during execution.
 -- ====================================================================================================
 
@@ -398,6 +398,33 @@ CREATE TABLE IF NOT EXISTS order_items (
     CONSTRAINT fk_order_items_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- ----------------------------------------------------------------------------------------------------
+-- TABLE 15: idempotency_keys
+-- PURPOSE & BUSINESS LOGIC:
+--   - Protects mission-critical order placement transactions against duplicate execution caused by client double-clicks
+--     or automated network retries.
+--   - Co-located in PostgreSQL within the same ACID transaction boundary as orders and inventory reservations.
+--   - Lifecycle Statuses:
+--       * 'IN_PROGRESS': Processing ongoing; concurrent duplicates immediately rejected with 409 Conflict.
+--       * 'COMPLETED': Successfully finished; replay requests with matching SHA-256 payload return cached response snapshot.
+--       * 'FAILED': Execution encountered fatal error; allow safe retries.
+--   - Enforces 24-hour expiration (expires_at) to ensure clean temporal state.
+-- ----------------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    id UUID PRIMARY KEY,
+    idempotency_key VARCHAR(100) NOT NULL UNIQUE,
+    user_id UUID NOT NULL,
+    request_path VARCHAR(255) NOT NULL,
+    request_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'IN_PROGRESS',
+    response_status INTEGER,
+    response_body JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT chk_idempotency_status CHECK (status IN ('IN_PROGRESS', 'COMPLETED', 'FAILED')),
+    CONSTRAINT fk_idempotency_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- ====================================================================================================
 -- PART 3: PERFORMANCE INDEXES (B-TREE, GIN JSONB, GIN TRIGRAM)
 -- ====================================================================================================
@@ -504,3 +531,11 @@ CREATE INDEX IF NOT EXISTS idx_order_items_order_id
 
 CREATE INDEX IF NOT EXISTS idx_order_items_variant_id 
     ON order_items (variant_id);
+
+-- 11. Indexes on 'idempotency_keys'
+CREATE INDEX IF NOT EXISTS idx_idempotency_lookup 
+    ON idempotency_keys (idempotency_key, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_expiry 
+    ON idempotency_keys (expires_at);
+
