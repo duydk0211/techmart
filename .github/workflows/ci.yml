@@ -10,7 +10,14 @@ on:
       - techmart-uat
       - main
 
+permissions:
+  contents: read
+  pull-requests: write # Cấp quyền cho bot tự động viết comment vào PR
+
 jobs:
+  # ==========================================
+  # JOB 1: CHẠY KIỂM THỬ VÀ VERIFY CODE JAVA
+  # ==========================================
   build-and-test:
     name: Build & Run All Tests
     runs-on: ubuntu-latest
@@ -30,3 +37,80 @@ jobs:
       - name: Verify Multi-Module Build & Execute Tests
         run: |
           mvn clean verify -B
+          
+  # ==========================================
+  # JOB 2: DEEPSEEK TỰ ĐỘNG REVIEW CODE TIẾNG VIỆT
+  # ==========================================
+  deepseek-code-review:
+    name: DeepSeek Automated Code Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout PR Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get Git Diff
+        run: |
+          # Lấy toàn bộ diff của các commit trong Pull Request
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+          head -c 60000 pr_diff.txt > diff_trimmed.txt
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Review with DeepSeek
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          pip install openai
+          python - << 'EOF'
+          import os
+          from openai import OpenAI
+          # Kết nối đến DeepSeek API (tương thích hoàn toàn chuẩn OpenAI)
+          client = OpenAI(
+              api_key=os.environ.get("DEEPSEEK_API_KEY"),
+              base_url="https://api.deepseek.com"
+          )
+          with open("diff_trimmed.txt", "r", encoding="utf-8") as f:
+              diff_content = f.read()
+          if not diff_content.strip():
+              review_output = "Không có thay đổi mã nguồn đáng kể để review."
+          else:
+              prompt = f"""
+          Bạn là một Senior Java Software Architect & Security Expert. Hãy phân tích git diff dưới đây và viết một báo cáo Review Code bằng tiếng Việt.
+          Định dạng đầu ra BẮT BUỘC theo cấu trúc bảng Markdown như sau:
+          ### 🤖 DeepSeek AI Code Review — Diff Changes
+          | # | Severity | File | Line | Problem |
+          |---|---|---|---|---|
+          (Liệt kê các vấn đề tìm thấy. Severity gồm: HIGH, WARNING, INFO. Viết giải thích vấn đề bằng tiếng Việt súc tích, chuyên sâu như senior review).
+          Nếu code tốt không có vấn đề gì, hãy giải thích ngắn gọn lý do code đạt chuẩn.
+          Git Diff cần review:
+          ```diff
+          {diff_content}
+          ```
+          """
+              response = client.chat.completions.create(
+                  model="deepseek-chat",
+                  messages=[
+                      {"role": "system", "content": "You are a professional software engineer specialized in code review."},
+                      {"role": "user", "content": prompt}
+                  ],
+                  temperature=0.2
+              )
+              review_output = response.choices[0].message.content
+          with open("review_result.md", "w", encoding="utf-8") as f:
+              f.write(review_output)
+          EOF
+      - name: Post DeepSeek Review to Pull Request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reviewComment = fs.readFileSync('review_result.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: reviewComment
+            });
