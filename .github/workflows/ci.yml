@@ -44,7 +44,7 @@ jobs:
   deepseek-code-review:
     name: DeepSeek Automated Code Review
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout PR Code
         uses: actions/checkout@v4
@@ -52,9 +52,8 @@ jobs:
           fetch-depth: 0
       - name: Get Git Diff
         run: |
-          # Lấy toàn bộ diff của các commit trong Pull Request
+          git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
-          head -c 60000 pr_diff.txt > diff_trimmed.txt
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -63,17 +62,19 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
-          pip install openai
+          pip install "openai>=1.30.0,<2.0.0"
           python - << 'EOF'
           import os
           from openai import OpenAI
           # Kết nối đến DeepSeek API (tương thích hoàn toàn chuẩn OpenAI)
           client = OpenAI(
               api_key=os.environ.get("DEEPSEEK_API_KEY"),
-              base_url="https://api.deepseek.com"
+              base_url="https://api.deepseek.com",
+              timeout=300.0
           )
-          with open("diff_trimmed.txt", "r", encoding="utf-8") as f:
-              diff_content = f.read()
+          with open("pr_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
+              full_diff = f.read()
+          diff_content = full_diff[:75000]
           if not diff_content.strip():
               review_output = "Không có thay đổi mã nguồn đáng kể để review."
           else:
@@ -84,7 +85,7 @@ jobs:
           | # | Severity | File | Line | Problem |
           |---|---|---|---|---|
           (Liệt kê các vấn đề tìm thấy. Severity gồm: HIGH, WARNING, INFO. Viết giải thích vấn đề bằng tiếng Việt súc tích, chuyên sâu như senior review).
-          Nếu code tốt không có vấn đề gì, hãy giải thích ngắn gọn lý do code đạt chuẩn.
+          Nếu code tốt không có vấn đề gì, hoặc đã được xủ lý các vấn đề trước đó, hãy giải thích ngắn gọn lý do code đạt chuẩn.
           Git Diff cần review:
           ```diff
           {diff_content}
@@ -100,7 +101,7 @@ jobs:
               )
               review_output = response.choices[0].message.content
           with open("review_result.md", "w", encoding="utf-8") as f:
-              f.write(review_output)
+              f.write(review_output[:60000])
           EOF
       - name: Post DeepSeek Review to Pull Request
         uses: actions/github-script@v7
@@ -108,7 +109,7 @@ jobs:
           script: |
             const fs = require('fs');
             const reviewComment = fs.readFileSync('review_result.md', 'utf8');
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
