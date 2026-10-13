@@ -14,6 +14,7 @@ import com.techmart.core.dto.request.order.CreateOrderRequest;
 import com.techmart.core.dto.request.order.UpdateOrderStatusRequest;
 import com.techmart.core.dto.response.order.OrderResponse;
 import com.techmart.core.dto.response.order.OrderSummaryResponse;
+import com.techmart.shared.annotation.Idempotent;
 import com.techmart.shared.constant.ResponseCode;
 import com.techmart.shared.dto.PagedResponse;
 import com.techmart.shared.exception.CoreException;
@@ -58,6 +59,7 @@ public class InternalOrderApiControllerImpl implements InternalOrderApiControlle
 
     @Override
     @PostMapping
+    @Idempotent(expireHours = 24)
     @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER", "STAFF"})
     public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
         UserContext.UserInfo user = getCurrentUser();

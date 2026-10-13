@@ -13,8 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ResponseCodeTest {
 
     @Test
-    void shouldContainExactly29EnumValues() {
-        assertEquals(29, ResponseCode.values().length, "System must have exactly 29 standardized ResponseCode enums");
+    void shouldContainExactly34EnumValues() {
+        assertEquals(34, ResponseCode.values().length, "System must have exactly 34 standardized ResponseCode enums");
     }
 
     @Test

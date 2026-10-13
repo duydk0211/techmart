@@ -48,7 +48,14 @@ public enum ResponseCode {
 
     // --- 6. ORDER ERRORS ---
     INVALID_ORDER_STATE("INVALID_ORDER_STATE", HttpStatus.UNPROCESSABLE_ENTITY, "error.invalid_order_state"),
-    ORDER_CANNOT_BE_CANCELLED("ORDER_CANNOT_BE_CANCELLED", HttpStatus.UNPROCESSABLE_ENTITY, "error.order_cannot_be_cancelled");
+    ORDER_CANNOT_BE_CANCELLED("ORDER_CANNOT_BE_CANCELLED", HttpStatus.UNPROCESSABLE_ENTITY, "error.order_cannot_be_cancelled"),
+
+    // --- 7. IDEMPOTENCY & STORAGE ERRORS ---
+    IDEMPOTENCY_KEY_IN_PROGRESS("IDEMPOTENCY_KEY_IN_PROGRESS", HttpStatus.CONFLICT, "error.idempotency_key_in_progress"),
+    IDEMPOTENCY_KEY_PAYLOAD_MISMATCH("IDEMPOTENCY_KEY_PAYLOAD_MISMATCH", HttpStatus.UNPROCESSABLE_ENTITY, "error.idempotency_key_payload_mismatch"),
+    FILE_STORAGE_ERROR("FILE_STORAGE_ERROR", HttpStatus.INTERNAL_SERVER_ERROR, "error.file_storage_error"),
+    INVALID_FILE_TYPE("INVALID_FILE_TYPE", HttpStatus.BAD_REQUEST, "error.invalid_file_type"),
+    FILE_TOO_LARGE("FILE_TOO_LARGE", HttpStatus.BAD_REQUEST, "error.file_too_large");
 
     private final String code;
     private final HttpStatus httpStatus;

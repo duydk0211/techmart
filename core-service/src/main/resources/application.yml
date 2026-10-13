@@ -25,3 +25,12 @@ techmart:
   jwt:
     secret: ${JWT_SECRET:techmart_super_secure_jwt_secret_key_2026_at_least_256_bits_long!}
     expiration-seconds: 900
+  minio:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    buckets:
+      products: ${MINIO_BUCKET_PRODUCTS:techmart-products}
+      brands: ${MINIO_BUCKET_BRANDS:techmart-brands}
+      avatars: ${MINIO_BUCKET_AVATARS:techmart-avatars}
+      banners: ${MINIO_BUCKET_BANNERS:techmart-banners}

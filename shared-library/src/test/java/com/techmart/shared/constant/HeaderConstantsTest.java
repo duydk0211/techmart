@@ -16,6 +16,7 @@ class HeaderConstantsTest {
         assertEquals("X-Internal-Secret", HeaderConstants.X_INTERNAL_SECRET);
         assertEquals("Correlation-Id", HeaderConstants.CORRELATION_ID);
         assertEquals("X-Correlation-Id", HeaderConstants.X_CORRELATION_ID);
+        assertEquals("Idempotency-Key", HeaderConstants.IDEMPOTENCY_KEY);
     }
 
     @Test
