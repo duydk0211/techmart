@@ -67,4 +67,7 @@ public class InternalBranchApiControllerImpl implements InternalBranchApiControl
         PagedResponse<BranchInventoryItemResponse> response = springBus.query(new GetBranchInventoryQuery(id, pageable));
         return ResponseEntity.ok(response);
     }
+
+
+    
 }
