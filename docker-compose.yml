@@ -2,38 +2,33 @@ version: '3.8'
 
 # ====================================================================================================
 # PROJECT: TECHMART — ELECTRONIC STORE MANAGEMENT SYSTEM
-# FILE: docker-compose.yml (HẠ TẦNG DỊCH VỤ DÙNG CHUNG CHO LOCAL DEV & TESTING)
-# INCLUDED SERVICES:
-#   1. PostgreSQL 16 (Port 5432) - Cơ sở dữ liệu chính 15 bảng (Tự động nạp init_schema.sql)
-#   2. Redis 7 (Port 6379) - Bộ nhớ đệm & Debounce (Cache, Idempotency lock, System Health)
-#   3. MinIO (Port 9000 S3 API, Port 9001 Console) - Lưu trữ tệp tin đối tượng S3-compatible
-#   4. MinIO Init - Tự động tạo Bucket 'techmart-media' và cấp quyền Download công khai
-#   5. Apache Kafka KRaft (Port 9092) - Message Broker hướng sự kiện (Không cần Zookeeper)
-#   6. Kafka UI (Port 8085) - Giao diện Web quản lý Topics, Messages, Consumer Groups
-#   7. Mailpit (Port 1025 SMTP, Port 8025 Web UI) - Giả lập SMTP Mail Server xem email trực quan
+# FILE: docker-compose.yml (SHARED INFRASTRUCTURE SERVICES FOR LOCAL DEV & TESTING)
+# SECURITY COMPLIANCE:
+#   - All ports are bound to 127.0.0.1 to prevent external network exposure.
+#   - All secrets and credentials are loaded dynamically from environment variables.
 # ====================================================================================================
 
 services:
 
   # --------------------------------------------------------------------------------------------------
-  # 1. POSTGRESQL 16 (Cơ sở dữ liệu chính)
+  # 1. POSTGRESQL 16 (Primary Core Relational Database)
   # --------------------------------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: techmart-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: ${DB_NAME:-techmart}
-      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_USER: ${DB_USERNAME:-${DB_USER:-postgres}}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       TZ: Asia/Ho_Chi_Minh
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/scriptDB/init_schema.sql:/docker-entrypoint-initdb.d/init_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d techmart"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-${DB_USER:-postgres}} -d ${DB_NAME:-techmart}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,19 +36,22 @@ services:
       - techmart-network
 
   # --------------------------------------------------------------------------------------------------
-  # 2. REDIS 7 (Bộ nhớ đệm & Phân tán)
+  # 2. REDIS 7 (Distributed Cache & Lock - Password Protected & Localhost Only)
   # --------------------------------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: techmart-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes --requirepass ""
+      - "127.0.0.1:6379:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-techmart_redis_pass_2026}
+    command: >
+      sh -c "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -61,18 +59,18 @@ services:
       - techmart-network
 
   # --------------------------------------------------------------------------------------------------
-  # 3. MINIO (Object Storage tương thích AWS S3)
+  # 3. MINIO (S3-Compatible Object Storage - Localhost Only)
   # --------------------------------------------------------------------------------------------------
   minio:
     image: minio/minio:latest
     container_name: techmart-minio
     restart: unless-stopped
     ports:
-      - "9000:9000"   # S3 API Endpoint (Spring Boot kết nối)
-      - "9001:9001"   # Web Console Dashboard (Quản trị viên xem ảnh)
+      - "127.0.0.1:9000:9000"   # S3 API Endpoint for Spring Boot integration
+      - "127.0.0.1:9001:9001"   # Web Console Dashboard for Media Management
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-techmart@2026}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-${MINIO_ACCESS_KEY:-admin}}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${MINIO_SECRET_KEY:-techmart@2026}}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -85,7 +83,7 @@ services:
       - techmart-network
 
   # --------------------------------------------------------------------------------------------------
-  # 4. MINIO INIT (Tự động khởi tạo các Buckets riêng biệt & Policy công khai)
+  # 4. MINIO INIT (Automated Multi-Bucket Creation & Public Read Policy Setup)
   # --------------------------------------------------------------------------------------------------
   minio-init:
     image: minio/mc:latest
@@ -93,13 +91,20 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-${MINIO_ACCESS_KEY:-admin}}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${MINIO_SECRET_KEY:-techmart@2026}}
+      BUCKET_PRODUCTS: ${MINIO_BUCKET_PRODUCTS:-techmart-products}
+      BUCKET_BRANDS: ${MINIO_BUCKET_BRANDS:-techmart-brands}
+      BUCKET_AVATARS: ${MINIO_BUCKET_AVATARS:-techmart-avatars}
+      BUCKET_BANNERS: ${MINIO_BUCKET_BANNERS:-techmart-banners}
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set local http://minio:9000 admin techmart@2026;
-      for bucket in techmart-products techmart-brands techmart-avatars techmart-banners; do
+      /usr/bin/mc alias set local http://minio:9000 \"\$$MINIO_ROOT_USER\" \"\$$MINIO_ROOT_PASSWORD\";
+      for bucket in \"\$$BUCKET_PRODUCTS\" \"\$$BUCKET_BRANDS\" \"\$$BUCKET_AVATARS\" \"\$$BUCKET_BANNERS\"; do
         /usr/bin/mc mb --ignore-existing local/\$$bucket;
         /usr/bin/mc anonymous set download local/\$$bucket;
-        echo \"Bucket \$$bucket đã được tạo và cấp quyền download công khai!\";
+        echo \"Bucket \$$bucket has been initialized with public download policy.\";
       done;
       exit 0;
       "
@@ -107,14 +112,14 @@ services:
       - techmart-network
 
   # --------------------------------------------------------------------------------------------------
-  # 5. APACHE KAFKA (KRaft Mode - Không cần Zookeeper)
+  # 5. APACHE KAFKA (KRaft Mode - Self-Contained Cluster Without Zookeeper)
   # --------------------------------------------------------------------------------------------------
   kafka:
     image: apache/kafka:3.7.1
     container_name: techmart-kafka
     restart: unless-stopped
     ports:
-      - "9092:9092"   # Port kết nối từ máy Host (Spring Boot Producer / Consumer)
+      - "127.0.0.1:9092:9092"   # Host communication port for Spring Boot Producer & Consumer
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -139,14 +144,14 @@ services:
       - techmart-network
 
   # --------------------------------------------------------------------------------------------------
-  # 6. KAFKA UI (Web Dashboard trực quan xem Topics, Messages, Consumer Groups)
+  # 6. KAFKA UI (Web Dashboard for Topic, Message, and Consumer Group Inspection)
   # --------------------------------------------------------------------------------------------------
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: techmart-kafka-ui
     restart: unless-stopped
     ports:
-      - "8085:8080"   # Port 8085 (Tránh xung đột với Gateway port 8080!)
+      - "127.0.0.1:8085:8080"   # Mapped to 8085 to avoid collision with Gateway Service (8080)
     environment:
       KAFKA_CLUSTERS_0_NAME: techmart-cluster
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094
@@ -156,22 +161,22 @@ services:
       - techmart-network
 
   # --------------------------------------------------------------------------------------------------
-  # 7. MAILPIT (Giả lập SMTP Mail Server & Hộp thư đến Web UI cho Dev/Test)
+  # 7. MAILPIT (Mock SMTP Server & Web Mailbox for Asynchronous Notification Testing)
   # --------------------------------------------------------------------------------------------------
   mailpit:
     image: axllent/mailpit:latest
     container_name: techmart-mailpit
     restart: unless-stopped
     ports:
-      - "1025:1025"   # SMTP server port (Spring Boot gửi mail vào đây)
-      - "8025:8025"   # Web UI xem email (Mở trình duyệt xem giao diện thư đến)
+      - "127.0.0.1:1025:1025"   # SMTP server port for Spring Boot JavaMailSender
+      - "127.0.0.1:8025:8025"   # Web UI port for reviewing sent emails
     volumes:
       - mailpit_data:/data
     networks:
       - techmart-network
 
 # ====================================================================================================
-# NETWORKS & VOLUMES
+# NETWORKS & PERSISTENT VOLUMES
 # ====================================================================================================
 networks:
   techmart-network:
