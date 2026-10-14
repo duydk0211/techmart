@@ -1,8 +1,11 @@
 package com.techmart.gateway;
 
 import com.techmart.gateway.client.CoreClient;
+import com.techmart.gateway.exception.GatewayExceptionHandler;
 import com.techmart.gateway.security.JwtTokenProvider;
 import com.techmart.shared.constant.HeaderConstants;
+import com.techmart.shared.constant.ResponseCode;
+import com.techmart.shared.dto.ErrorResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,12 +13,18 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -141,10 +150,10 @@ class GatewayMetricsAndStorageSecurityTests {
     }
 
     // ==========================================
-    // 3. STORAGE UPLOAD SECURITY (STAFF & ADMIN)
+    // 3. STORAGE UPLOAD SECURITY (CUSTOMER, STAFF & ADMIN)
     // ==========================================
     @Test
-    @DisplayName("AC-12, AC-13 & AC-15: /api/v1/files/upload requires STAFF or ADMIN role; blocks Anonymous and CUSTOMER")
+    @DisplayName("AC-04 & AC-15: /api/v1/files/upload allows CUSTOMER, STAFF and ADMIN roles; blocks Anonymous")
     void testStorageUploadSecurity() throws Exception {
         UUID userId = UUID.randomUUID();
         MockMultipartFile file = new MockMultipartFile("file", "image.jpg", "image/jpeg", "bytes".getBytes());
@@ -154,12 +163,15 @@ class GatewayMetricsAndStorageSecurityTests {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
 
-        // 2. CUSTOMER -> 403
+        // 2. CUSTOMER -> 200 OK (forwarded to core)
         String customerToken = jwtTokenProvider.generateAccessToken(userId, "cust@techmart.vn", "CUSTOMER");
+        when(coreClient.forwardMultipart(any(), any(), any(), any(), eq(Object.class)))
+                .thenReturn(ResponseEntity.ok("{\"fileName\":\"avatar.jpg\"}"));
+
         mockMvc.perform(multipart("/api/v1/files/upload").file(file)
+                        .param("bucket", "avatars")
                         .header("Authorization", "Bearer " + customerToken))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+                .andExpect(status().isOk());
 
         // 3. STAFF -> 200 OK
         String staffToken = jwtTokenProvider.generateAccessToken(userId, "staff@techmart.vn", "STAFF");
@@ -237,5 +249,23 @@ class GatewayMetricsAndStorageSecurityTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"branchId\":\"" + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isCreated());
+    }
+
+    // ==========================================
+    // 6. EXCEPTION HANDLING: MAX UPLOAD SIZE EXCEEDED
+    // ==========================================
+    @Test
+    @DisplayName("GatewayExceptionHandler handles MaxUploadSizeExceededException returning 400 FILE_TOO_LARGE")
+    void testGatewayExceptionHandlerMaxUploadSizeExceeded() {
+        GatewayExceptionHandler handler = new GatewayExceptionHandler();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/files/upload");
+        request.addHeader(HeaderConstants.CORRELATION_ID, "gw-trace-id");
+        MaxUploadSizeExceededException ex = new MaxUploadSizeExceededException(5242880);
+
+        ResponseEntity<ErrorResponse> response = handler.handleMaxUploadSizeExceededException(ex, request);
+        assertNotNull(response);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(ResponseCode.FILE_TOO_LARGE.getCode(), response.getBody().getCode());
+        assertEquals("gw-trace-id", response.getBody().getTraceId());
     }
 }

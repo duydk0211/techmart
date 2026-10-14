@@ -23,9 +23,16 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+
+import com.techmart.core.exception.GlobalExceptionHandler;
+import com.techmart.shared.dto.ErrorResponse;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -212,6 +219,115 @@ public class MinioStorageCoreTests {
         assertEquals(1, fakeMinioClient.getPutObjectCalls().size());
     }
 
+    @Test
+    @DisplayName("CUSTOMER upload to avatars bucket succeeds with 200 OK")
+    void testCustomerUploadToAvatarsSuccess() throws Exception {
+        fakeMinioClient.setBucketExistsReturn(true);
+
+        UUID customerId = UUID.randomUUID();
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "avatar.png",
+                "image/png",
+                "simulated png content".getBytes()
+        );
+
+        mockMvc.perform(multipart("/internal/api/v1/files/upload")
+                        .file(file)
+                        .param("bucket", "avatars")
+                        .header(HeaderConstants.X_INTERNAL_SECRET, VALID_INTERNAL_SECRET)
+                        .header("X-User-Id", customerId.toString())
+                        .header("X-User-Role", "CUSTOMER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bucket").value("techmart-avatars"))
+                .andExpect(jsonPath("$.fileName", matchesPattern("^[0-9a-fA-F\\-]{36}\\.png$")))
+                .andExpect(jsonPath("$.fileUrl", matchesPattern("^http://localhost:9000/techmart-avatars/[0-9a-fA-F\\-]{36}\\.png$")));
+
+        assertEquals(1, fakeMinioClient.getPutObjectCalls().size());
+    }
+
+    @Test
+    @DisplayName("STAFF upload to any bucket (e.g. banners) succeeds with 200 OK")
+    void testStaffUploadSuccess() throws Exception {
+        fakeMinioClient.setBucketExistsReturn(true);
+
+        UUID staffId = UUID.randomUUID();
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "promo-banner.webp",
+                "image/webp",
+                "simulated webp banner content".getBytes()
+        );
+
+        mockMvc.perform(multipart("/internal/api/v1/files/upload")
+                        .file(file)
+                        .param("bucket", "banners")
+                        .header(HeaderConstants.X_INTERNAL_SECRET, VALID_INTERNAL_SECRET)
+                        .header("X-User-Id", staffId.toString())
+                        .header("X-User-Role", "STAFF"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bucket").value("techmart-banners"))
+                .andExpect(jsonPath("$.fileName", matchesPattern("^[0-9a-fA-F\\-]{36}\\.webp$")))
+                .andExpect(jsonPath("$.fileUrl", matchesPattern("^http://localhost:9000/techmart-banners/[0-9a-fA-F\\-]{36}\\.webp$")));
+
+        assertEquals(1, fakeMinioClient.getPutObjectCalls().size());
+    }
+
+    @Test
+    @DisplayName("CUSTOMER upload to other buckets is rejected with 403 ACCESS_DENIED")
+    void testCustomerUploadToOtherBucketsRejected() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "avatar.png",
+                "image/png",
+                "simulated png content".getBytes()
+        );
+
+        // 1. Upload to products bucket
+        mockMvc.perform(multipart("/internal/api/v1/files/upload")
+                        .file(file)
+                        .param("bucket", "products")
+                        .header(HeaderConstants.X_INTERNAL_SECRET, VALID_INTERNAL_SECRET)
+                        .header("X-User-Id", customerId.toString())
+                        .header("X-User-Role", "CUSTOMER"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ResponseCode.ACCESS_DENIED.getCode()))
+                .andExpect(jsonPath("$.message").value("Customers are only permitted to upload avatar images"));
+
+        // 2. Upload without bucket param (defaults to products)
+        mockMvc.perform(multipart("/internal/api/v1/files/upload")
+                        .file(file)
+                        .header(HeaderConstants.X_INTERNAL_SECRET, VALID_INTERNAL_SECRET)
+                        .header("X-User-Id", customerId.toString())
+                        .header("X-User-Role", "CUSTOMER"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ResponseCode.ACCESS_DENIED.getCode()))
+                .andExpect(jsonPath("$.message").value("Customers are only permitted to upload avatar images"));
+
+        // 3. Upload to brands bucket
+        mockMvc.perform(multipart("/internal/api/v1/files/upload")
+                        .file(file)
+                        .param("bucket", "brands")
+                        .header(HeaderConstants.X_INTERNAL_SECRET, VALID_INTERNAL_SECRET)
+                        .header("X-User-Id", customerId.toString())
+                        .header("X-User-Role", "CUSTOMER"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ResponseCode.ACCESS_DENIED.getCode()))
+                .andExpect(jsonPath("$.message").value("Customers are only permitted to upload avatar images"));
+
+        // 4. Upload to banners bucket
+        mockMvc.perform(multipart("/internal/api/v1/files/upload")
+                        .file(file)
+                        .param("bucket", "banners")
+                        .header(HeaderConstants.X_INTERNAL_SECRET, VALID_INTERNAL_SECRET)
+                        .header("X-User-Id", customerId.toString())
+                        .header("X-User-Role", "CUSTOMER"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(ResponseCode.ACCESS_DENIED.getCode()))
+                .andExpect(jsonPath("$.message").value("Customers are only permitted to upload avatar images"));
+    }
+
     // ==========================================
     // AC-13: REJECT FILE > 5MB (400 FILE_TOO_LARGE)
     // ==========================================
@@ -359,5 +475,20 @@ public class MinioStorageCoreTests {
                         .header("X-User-Role", "ADMIN"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value(ResponseCode.FILE_STORAGE_ERROR.getCode()));
+    }
+
+    @Test
+    @DisplayName("GlobalExceptionHandler handles MaxUploadSizeExceededException returning 400 FILE_TOO_LARGE")
+    void testGlobalExceptionHandlerMaxUploadSizeExceeded() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/api/v1/files/upload");
+        request.addHeader(HeaderConstants.CORRELATION_ID, "test-trace-id");
+        MaxUploadSizeExceededException ex = new MaxUploadSizeExceededException(5242880);
+
+        ResponseEntity<ErrorResponse> response = handler.handleMaxUploadSizeExceededException(ex, request);
+        assertNotNull(response);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(ResponseCode.FILE_TOO_LARGE.getCode(), response.getBody().getCode());
+        assertEquals("test-trace-id", response.getBody().getTraceId());
     }
 }

@@ -1,6 +1,7 @@
 package com.techmart.core.service.storage.impl;
 
 import com.fasterxml.uuid.Generators;
+import com.techmart.core.authorization.UserContext;
 import com.techmart.core.dto.response.storage.FileUploadResponse;
 import com.techmart.core.service.storage.StorageService;
 import com.techmart.shared.constant.ResponseCode;
@@ -59,6 +60,14 @@ public class MinioStorageServiceImpl implements StorageService {
     @Override
     public FileUploadResponse uploadFile(MultipartFile file, String bucketType) {
         log.info("[MinioStorageServiceImpl][uploadFile] Handling upload for bucketType: {}", bucketType);
+
+        UserContext.UserInfo currentUser = UserContext.getCurrentUser();
+        if (currentUser != null && "CUSTOMER".equalsIgnoreCase(currentUser.role())) {
+            if (bucketType == null || !"avatars".equalsIgnoreCase(bucketType.trim())) {
+                log.warn("[MinioStorageServiceImpl][uploadFile] Customer attempted upload to unauthorized bucket: {}", bucketType);
+                throw new CoreException(ResponseCode.ACCESS_DENIED, "Customers are only permitted to upload avatar images");
+            }
+        }
 
         if (file == null || file.isEmpty()) {
             log.warn("[MinioStorageServiceImpl][uploadFile] Rejected empty file");

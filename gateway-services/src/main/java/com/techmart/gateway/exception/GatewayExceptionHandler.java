@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 
@@ -25,8 +26,12 @@ public class GatewayExceptionHandler {
 
     private final ObjectMapper objectMapper;
 
+    public GatewayExceptionHandler() {
+        this.objectMapper = new ObjectMapper();
+    }
+
     public GatewayExceptionHandler(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
     }
 
     @ExceptionHandler(RestClientResponseException.class)
@@ -57,16 +62,36 @@ public class GatewayExceptionHandler {
         ResponseCode code = ex.getResponseCode();
         HttpStatus status = code.getHttpStatus();
 
+        String message = (ex.getMessage() != null && !ex.getMessage().equals(code.getCode()))
+                ? ex.getMessage()
+                : MessageUtils.getMessage(code, ex.getArgs());
+
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .status(status.value())
                 .code(code.getCode())
-                .message(MessageUtils.getMessage(code, ex.getArgs()))
+                .message(message)
                 .timestamp(Instant.now())
                 .path(request.getRequestURI())
                 .traceId(resolveTraceId(request))
                 .build();
 
         return ResponseEntity.status(status).body(errorResponse);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        log.warn("[GatewayExceptionHandler][handleMaxUploadSizeExceededException] Upload size exceeded limit: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .code(ResponseCode.FILE_TOO_LARGE.getCode())
+                .message(MessageUtils.getMessage(ResponseCode.FILE_TOO_LARGE))
+                .timestamp(Instant.now())
+                .path(request.getRequestURI())
+                .traceId(resolveTraceId(request))
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
     @ExceptionHandler(Exception.class)

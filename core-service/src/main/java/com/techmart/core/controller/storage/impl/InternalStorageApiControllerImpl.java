@@ -1,8 +1,10 @@
 package com.techmart.core.controller.storage.impl;
 
+import com.techmart.core.bus.SpringBus;
+import com.techmart.core.bus.command.storage.DeleteFileCommand;
+import com.techmart.core.bus.command.storage.UploadFileCommand;
 import com.techmart.core.controller.storage.InternalStorageApiController;
 import com.techmart.core.dto.response.storage.FileUploadResponse;
-import com.techmart.core.service.storage.StorageService;
 import com.techmart.shared.security.TechmartPreauthorize;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,20 +24,20 @@ public class InternalStorageApiControllerImpl implements InternalStorageApiContr
 
     private static final Logger log = LoggerFactory.getLogger(InternalStorageApiControllerImpl.class);
 
-    private final StorageService storageService;
+    private final SpringBus springBus;
 
-    public InternalStorageApiControllerImpl(StorageService storageService) {
-        this.storageService = storageService;
+    public InternalStorageApiControllerImpl(SpringBus springBus) {
+        this.springBus = springBus;
     }
 
     @Override
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"STAFF", "ADMIN"})
+    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER", "STAFF", "ADMIN"})
     public ResponseEntity<FileUploadResponse> uploadFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "bucket", defaultValue = "products") String bucket) {
         log.info("[InternalStorageApiControllerImpl][uploadFile] Uploading file for bucket: {}", bucket);
-        FileUploadResponse response = storageService.uploadFile(file, bucket);
+        FileUploadResponse response = springBus.execute(new UploadFileCommand(file, bucket));
         return ResponseEntity.ok(response);
     }
 
@@ -46,7 +48,7 @@ public class InternalStorageApiControllerImpl implements InternalStorageApiContr
             @PathVariable String fileName,
             @RequestParam(value = "bucket", defaultValue = "products") String bucket) {
         log.info("[InternalStorageApiControllerImpl][deleteFile] Deleting file: {} from bucket: {}", fileName, bucket);
-        storageService.deleteFile(fileName, bucket);
+        springBus.execute(new DeleteFileCommand(fileName, bucket));
         return ResponseEntity.noContent().build();
     }
 }

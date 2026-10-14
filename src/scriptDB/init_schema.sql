@@ -2,7 +2,7 @@
 -- PROJECT: TECHMART — ELECTRONIC STORE MANAGEMENT SYSTEM
 -- SCRIPT: init_schema.sql (MASTER DATABASE DDL SPECIFICATION)
 -- DATABASE ENGINE: PostgreSQL 16+
--- DESCRIPTION: Complete schema definition for 15 core tables, constraints, extensions, and indexes.
+-- DESCRIPTION: Complete schema definition for 16 core tables, constraints, extensions, and indexes.
 -- NOTE: Seed data excluded per plan — data will be populated and tested via REST APIs during execution.
 -- ====================================================================================================
 
@@ -425,6 +425,28 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     CONSTRAINT fk_idempotency_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- ----------------------------------------------------------------------------------------------------
+-- TABLE 16: banners
+-- PURPOSE & BUSINESS LOGIC:
+--   - Promotional banners displayed on the homepage and landing pages.
+--   - Managed by STAFF / ADMIN, publicly queryable for active items.
+--   - display_order controls sequence (ASC), followed by created_at DESC.
+-- ----------------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS banners (
+    id UUID PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    target_url VARCHAR(500),
+    display_order INTEGER NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID,
+    updated_by UUID,
+    CONSTRAINT fk_banners_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_banners_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 -- ====================================================================================================
 -- PART 3: PERFORMANCE INDEXES (B-TREE, GIN JSONB, GIN TRIGRAM)
 -- ====================================================================================================
@@ -538,4 +560,9 @@ CREATE INDEX IF NOT EXISTS idx_idempotency_lookup
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_expiry 
     ON idempotency_keys (expires_at);
+
+-- 12. Indexes on 'banners'
+CREATE INDEX IF NOT EXISTS idx_banners_active_order_created 
+    ON banners (active, display_order ASC, created_at DESC);
+
 
