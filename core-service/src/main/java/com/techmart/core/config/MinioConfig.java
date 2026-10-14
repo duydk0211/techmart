@@ -9,13 +9,13 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MinioConfig {
 
-    @Value("${techmart.minio.endpoint:http://localhost:9000}")
+    @Value("${techmart.minio.endpoint}")
     private String endpoint;
 
-    @Value("${techmart.minio.access-key:minioadmin}")
+    @Value("${techmart.minio.access-key}")
     private String accessKey;
 
-    @Value("${techmart.minio.secret-key:minioadmin}")
+    @Value("${techmart.minio.secret-key}")
     private String secretKey;
 
     @Bean
