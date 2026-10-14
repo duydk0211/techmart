@@ -43,11 +43,11 @@ public class MinioStorageServiceImpl implements StorageService {
 
     public MinioStorageServiceImpl(
             MinioClient minioClient,
-            @Value("${techmart.minio.endpoint:http://localhost:9000}") String endpoint,
-            @Value("${techmart.minio.buckets.products:techmart-products}") String productsBucket,
-            @Value("${techmart.minio.buckets.brands:techmart-brands}") String brandsBucket,
-            @Value("${techmart.minio.buckets.avatars:techmart-avatars}") String avatarsBucket,
-            @Value("${techmart.minio.buckets.banners:techmart-banners}") String bannersBucket) {
+            @Value("${techmart.minio.endpoint}") String endpoint,
+            @Value("${techmart.minio.buckets.products}") String productsBucket,
+            @Value("${techmart.minio.buckets.brands}") String brandsBucket,
+            @Value("${techmart.minio.buckets.avatars}") String avatarsBucket,
+            @Value("${techmart.minio.buckets.banners}") String bannersBucket) {
         this.minioClient = minioClient;
         this.endpoint = endpoint;
         this.productsBucket = productsBucket;
