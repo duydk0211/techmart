@@ -13,7 +13,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write # FIX 1: Quyền tạo và cập nhật comment trên PR
+  issues: write
 
 jobs:
   # ==========================================
@@ -63,7 +63,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           git fetch origin "$BASE_REF"
-          git diff "origin/$BASE_REF...HEAD" > pr_diff.txt
+          git diff "origin/$BASE_REF...HEAD" -- . ':(exclude)**/src/test/**' > pr_diff.txt
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -74,29 +74,37 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
-          pip install openai
+          pip install openai httpx
           python - << 'EOF'
           import os
           import re
+          import httpx
           from openai import OpenAI
 
+          api_key = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
+
           client = OpenAI(
-              api_key=os.environ.get("DEEPSEEK_API_KEY"),
+              api_key=api_key,
               base_url="https://api.deepseek.com",
-              timeout=180.0
+              timeout=httpx.Timeout(180.0, connect=30.0),
+              max_retries=3
           )
 
           try:
+              if not api_key:
+                  raise ValueError("Missing DEEPSEEK_API_KEY in GitHub Secrets.")
+
               with open("pr_diff.txt", "r", encoding="utf-8", errors="ignore") as f:
                   full_diff = f.read()
 
-              is_truncated = len(full_diff) > 75000
-              diff_content = full_diff[:75000]
+              MAX_CHARS = 60000
+              is_truncated = len(full_diff) > MAX_CHARS
+              diff_content = full_diff[:MAX_CHARS]
               if is_truncated:
                   diff_content += "\n\n[CẢNH BÁO: Git Diff quá lớn, đã cắt ngắn để vừa hạn mức token]\n"
 
               if not diff_content.strip():
-                  review_output = "Không có thay đổi mã nguồn đáng kể để review."
+                  review_output = "Không có thay đổi mã nguồn đáng kể để review (hoặc PR chỉ thay đổi file test)."
               else:
                   prompt = f"""
           Bạn là Senior Java Software Architect & Security Expert. Hãy phân tích git diff dưới đây và viết báo cáo Review Code bằng tiếng Việt.
@@ -125,7 +133,7 @@ jobs:
           {diff_content}
           <<<END_GIT_DIFF>>>
           """
-                  response = client.chat.completions.create(
+                  stream = client.chat.completions.create(
                       model="deepseek-chat",
                       messages=[
                           {
@@ -140,15 +148,23 @@ jobs:
                           {"role": "user", "content": prompt}
                       ],
                       temperature=0.2,
-                      max_tokens=3000
+                      max_tokens=3500,
+                      stream=True
                   )
-                  review_output = response.choices[0].message.content or "Không nhận được phản hồi từ AI."
 
-              # FIX 7: Tránh ping nhầm @everyone / @here
+                  chunks = []
+                  for chunk in stream:
+                      if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                          chunks.append(chunk.choices[0].delta.content)
+
+                  review_output = "".join(chunks).strip() or "Không nhận được phản hồi từ AI."
+
+              # Tránh ping nhầm @everyone / @here
               review_output = re.sub(r'@(everyone|here)', r'@ \1', review_output)
 
           except Exception as e:
-              review_output = f"⚠️ **DeepSeek Code Review tạm thời không khả dụng:** `{str(e)}`\n\n*(Lỗi này không ảnh hưởng đến kết quả Build và Test của hệ thống)*."
+              cause = f" ({repr(e.__cause__)})" if getattr(e, "__cause__", None) else ""
+              review_output = f"⚠️ **DeepSeek Code Review tạm thời không khả dụng:** `{str(e)}{cause}`\n\n*(Lỗi này không ảnh hưởng đến kết quả Build và Test của hệ thống)*."
 
           with open("review_result.md", "w", encoding="utf-8") as f:
               f.write(review_output[:60000])
