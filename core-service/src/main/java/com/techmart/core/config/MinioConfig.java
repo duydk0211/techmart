@@ -1,29 +1,27 @@
 package com.techmart.core.config;
 
 import io.minio.MinioClient;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@EnableConfigurationProperties(MinioProperties.class)
 public class MinioConfig {
 
-    @Value("${techmart.minio.endpoint}")
-    private String endpoint;
+    private final MinioProperties properties;
 
-    @Value("${techmart.minio.access-key}")
-    private String accessKey;
-
-    @Value("${techmart.minio.secret-key}")
-    private String secretKey;
+    public MinioConfig(MinioProperties properties) {
+        this.properties = properties;
+    }
 
     @Bean
     @ConditionalOnMissingBean
     public MinioClient minioClient() {
         return MinioClient.builder()
-                .endpoint(endpoint)
-                .credentials(accessKey, secretKey)
+                .endpoint(properties.getEndpoint())
+                .credentials(properties.getAccessKey(), properties.getSecretKey())
                 .build();
     }
 }

@@ -62,9 +62,13 @@ public class GatewayExceptionHandler {
         ResponseCode code = ex.getResponseCode();
         HttpStatus status = code.getHttpStatus();
 
-        String message = (ex.getMessage() != null && !ex.getMessage().equals(code.getCode()))
-                ? ex.getMessage()
-                : MessageUtils.getMessage(code, ex.getArgs());
+        String rawMessage = ex.getMessage();
+        String message;
+        if (rawMessage != null && !rawMessage.equals(code.getCode()) && isSafeClientMessage(rawMessage)) {
+            message = rawMessage;
+        } else {
+            message = MessageUtils.getMessage(code, ex.getArgs());
+        }
 
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .status(status.value())
@@ -76,6 +80,24 @@ public class GatewayExceptionHandler {
                 .build();
 
         return ResponseEntity.status(status).body(errorResponse);
+    }
+
+    private boolean isSafeClientMessage(String msg) {
+        if (msg == null || msg.isBlank() || msg.length() > 250) {
+            return false;
+        }
+        String lower = msg.toLowerCase();
+        return !lower.contains("exception")
+                && !lower.contains("sql")
+                && !lower.contains("nullpointer")
+                && !lower.contains("org.springframework")
+                && !lower.contains("com.techmart")
+                && !lower.contains(".java:")
+                && !lower.contains("syntax error")
+                && !lower.contains("violates")
+                && !lower.contains("constraint")
+                && !lower.contains("table \"")
+                && !lower.contains("column \"");
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

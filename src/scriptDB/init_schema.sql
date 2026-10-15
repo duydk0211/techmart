@@ -2,7 +2,7 @@
 -- PROJECT: TECHMART — ELECTRONIC STORE MANAGEMENT SYSTEM
 -- SCRIPT: init_schema.sql (MASTER DATABASE DDL SPECIFICATION)
 -- DATABASE ENGINE: PostgreSQL 16+
--- DESCRIPTION: Complete schema definition for 16 core tables, constraints, extensions, and indexes.
+-- DESCRIPTION: Complete schema definition for 18 core tables, constraints, extensions, and indexes.
 -- NOTE: Seed data excluded per plan — data will be populated and tested via REST APIs during execution.
 -- ====================================================================================================
 

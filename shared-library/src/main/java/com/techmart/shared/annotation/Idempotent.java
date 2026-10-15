@@ -19,4 +19,11 @@ public @interface Idempotent {
      * Default is 24 hours.
      */
     int expireHours() default 24;
+
+    /**
+     * Whether the Idempotency-Key header is strictly required.
+     * If true and the header is missing, a validation error is thrown.
+     * Default is false for backward compatibility.
+     */
+    boolean required() default false;
 }

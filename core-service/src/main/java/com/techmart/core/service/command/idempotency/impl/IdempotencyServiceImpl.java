@@ -72,7 +72,14 @@ public class IdempotencyServiceImpl implements IdempotencyService {
             return repository.saveAndFlush(entity);
         } catch (DataIntegrityViolationException ex) {
             log.warn("[IdempotencyServiceImpl][createOrUpdateInProgress] Concurrent creation conflict for key: {}", key);
-            throw new CoreException(ResponseCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+            return repository.findByIdempotencyKeyAndUserId(key, userId)
+                    .map(existing -> {
+                        if (existing.getStatus() == IdempotencyStatus.IN_PROGRESS) {
+                            throw new CoreException(ResponseCode.IDEMPOTENCY_KEY_IN_PROGRESS);
+                        }
+                        return existing;
+                    })
+                    .orElseThrow(() -> new CoreException(ResponseCode.IDEMPOTENCY_KEY_IN_PROGRESS));
         }
     }
 

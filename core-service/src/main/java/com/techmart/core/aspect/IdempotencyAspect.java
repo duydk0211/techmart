@@ -80,38 +80,19 @@ public class IdempotencyAspect {
 
         String idempotencyKey = request.getHeader(HeaderConstants.IDEMPOTENCY_KEY);
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            if (idempotent.required()) {
+                throw new CoreException(ResponseCode.VALIDATION_FAILED, "Header 'Idempotency-Key' is required for this operation");
+            }
             return joinPoint.proceed();
         }
 
-        UUID userId = resolveCurrentUserId(request);
+        UUID userId = resolveCurrentUserId();
         if (userId == null) {
             throw new CoreException(ResponseCode.UNAUTHORIZED, "User authentication required for idempotent operations");
         }
 
         String requestHash = computeRequestHash(joinPoint);
         log.info("[IdempotencyAspect][handleIdempotency] Intercepted key: {} for user: {} with hash: {}", idempotencyKey, userId, requestHash);
-
-        Optional<IdempotencyKeyEntity> existingOpt = idempotencyService.findByKeyAndUserId(idempotencyKey, userId);
-        if (existingOpt.isPresent()) {
-            IdempotencyKeyEntity existing = existingOpt.get();
-            boolean isExpired = existing.getExpiresAt().isBefore(Instant.now());
-
-            if (!isExpired) {
-                if (existing.getStatus() == IdempotencyStatus.IN_PROGRESS) {
-                    log.warn("[IdempotencyAspect][handleIdempotency] Concurrent operation in progress for key: {}", idempotencyKey);
-                    throw new CoreException(ResponseCode.IDEMPOTENCY_KEY_IN_PROGRESS);
-                } else if (existing.getStatus() == IdempotencyStatus.COMPLETED) {
-                    if (!requestHash.equals(existing.getRequestHash())) {
-                        log.warn("[IdempotencyAspect][handleIdempotency] Payload mismatch for idempotency key: {}", idempotencyKey);
-                        throw new CoreException(ResponseCode.IDEMPOTENCY_KEY_PAYLOAD_MISMATCH);
-                    }
-
-                    log.info("[IdempotencyAspect][handleIdempotency] Replaying cached response for idempotency key: {}", idempotencyKey);
-                    idempotencyService.incrementBlockedRequests();
-                    return buildReplayResponse(joinPoint, existing);
-                }
-            }
-        }
 
         IdempotencyKeyEntity record = idempotencyService.createOrUpdateInProgress(
                 idempotencyKey,
@@ -120,6 +101,17 @@ public class IdempotencyAspect {
                 requestHash,
                 idempotent.expireHours()
         );
+
+        if (record.getStatus() == IdempotencyStatus.COMPLETED) {
+            if (!requestHash.equals(record.getRequestHash())) {
+                log.warn("[IdempotencyAspect][handleIdempotency] Payload mismatch for idempotency key: {}", idempotencyKey);
+                throw new CoreException(ResponseCode.IDEMPOTENCY_KEY_PAYLOAD_MISMATCH);
+            }
+
+            log.info("[IdempotencyAspect][handleIdempotency] Replaying cached response for idempotency key: {}", idempotencyKey);
+            idempotencyService.incrementBlockedRequests();
+            return buildReplayResponse(joinPoint, record);
+        }
 
         Object result;
         try {
@@ -152,18 +144,10 @@ public class IdempotencyAspect {
         return attrs != null ? attrs.getRequest() : null;
     }
 
-    private UUID resolveCurrentUserId(HttpServletRequest request) {
+    private UUID resolveCurrentUserId() {
         UserContext.UserInfo currentUser = UserContext.getCurrentUser();
         if (currentUser != null && currentUser.userId() != null) {
             return currentUser.userId();
-        }
-        String userIdHeader = request.getHeader("X-User-Id");
-        if (userIdHeader != null && !userIdHeader.isBlank()) {
-            try {
-                return UUID.fromString(userIdHeader);
-            } catch (Exception ignored) {
-                // Ignore parse exception
-            }
         }
         return null;
     }
