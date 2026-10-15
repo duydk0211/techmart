@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: gateway-services
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
 
 techmart:
   core-service:

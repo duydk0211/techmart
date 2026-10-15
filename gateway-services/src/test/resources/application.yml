@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-services-test
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+techmart:
+  core-service:
+    url: http://localhost:8081
+  security:
+    internal-secret: techmart_internal_secret_2026
+  jwt:
+    secret: techmart_super_secure_jwt_secret_key_2026_at_least_256_bits_long!
+    expiration-seconds: 900
+  cors:
+    enabled: true
+    allowed-origins: http://localhost:3000,http://localhost:8080

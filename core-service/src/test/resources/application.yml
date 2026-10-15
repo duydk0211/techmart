@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: core-service-test
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
   datasource:
     url: jdbc:h2:mem:techmart_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     driver-class-name: org.h2.Driver
@@ -20,3 +24,12 @@ techmart:
   jwt:
     secret: techmart_super_secure_jwt_secret_key_2026_at_least_256_bits_long!
     expiration-seconds: 900
+  minio:
+    endpoint: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    buckets:
+      products: techmart-products
+      brands: techmart-brands
+      avatars: techmart-avatars
+      banners: techmart-banners

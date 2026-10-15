@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -23,6 +24,7 @@ import java.util.Arrays;
 
 @Aspect
 @Component
+@Order(1)
 public class TechmartPreauthorizeAspect {
 
     private static final Logger log = LoggerFactory.getLogger(TechmartPreauthorizeAspect.class);

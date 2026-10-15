@@ -69,7 +69,7 @@ public class InternalUserApiControllerImpl implements InternalUserApiController 
 
     @Override
     @GetMapping("/addresses")
-    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER", "USER"}, authenticated = true)
+    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER"}, authenticated = true)
     public ResponseEntity<List<AddressResponse>> getAddresses() {
         UUID userId = getCurrentUserId();
         log.info("[InternalUserApiControllerImpl][getAddresses] Fetching addresses for user: {}", userId);
@@ -79,7 +79,7 @@ public class InternalUserApiControllerImpl implements InternalUserApiController 
 
     @Override
     @PostMapping("/addresses")
-    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER", "USER"}, authenticated = true)
+    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER"}, authenticated = true)
     public ResponseEntity<AddressResponse> addAddress(@Valid @RequestBody AddressRequest request) {
         UUID userId = getCurrentUserId();
         log.info("[InternalUserApiControllerImpl][addAddress] Adding address for user: {}", userId);
@@ -89,7 +89,7 @@ public class InternalUserApiControllerImpl implements InternalUserApiController 
 
     @Override
     @PutMapping("/addresses/{id}")
-    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER", "USER"}, authenticated = true)
+    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER"}, authenticated = true)
     public ResponseEntity<AddressResponse> updateAddress(@PathVariable("id") UUID id, @Valid @RequestBody AddressRequest request) {
         UUID userId = getCurrentUserId();
         log.info("[InternalUserApiControllerImpl][updateAddress] Updating address {} for user: {}", id, userId);
@@ -99,7 +99,7 @@ public class InternalUserApiControllerImpl implements InternalUserApiController 
 
     @Override
     @DeleteMapping("/addresses/{id}")
-    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER", "USER"}, authenticated = true)
+    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER"}, authenticated = true)
     public ResponseEntity<Void> deleteAddress(@PathVariable("id") UUID id) {
         UUID userId = getCurrentUserId();
         log.info("[InternalUserApiControllerImpl][deleteAddress] Deleting address {} for user: {}", id, userId);
@@ -109,7 +109,7 @@ public class InternalUserApiControllerImpl implements InternalUserApiController 
 
     @Override
     @PatchMapping("/addresses/{id}/default")
-    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER", "USER"}, authenticated = true)
+    @TechmartPreauthorize(gateway = "TECHMART_GW", roles = {"CUSTOMER"}, authenticated = true)
     public ResponseEntity<AddressResponse> setDefaultAddress(@PathVariable("id") UUID id) {
         UUID userId = getCurrentUserId();
         log.info("[InternalUserApiControllerImpl][setDefaultAddress] Setting default address {} for user: {}", id, userId);

@@ -15,6 +15,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,16 +34,42 @@ public class GlobalExceptionHandler {
         ResponseCode code = ex.getResponseCode();
         HttpStatus status = code.getHttpStatus();
 
+        String rawMessage = ex.getMessage();
+        String message;
+        if (rawMessage != null && !rawMessage.equals(code.getCode()) && isSafeClientMessage(rawMessage)) {
+            message = rawMessage;
+        } else {
+            message = MessageUtils.getMessage(code, ex.getArgs());
+        }
+
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .status(status.value())
                 .code(code.getCode())
-                .message(MessageUtils.getMessage(code, ex.getArgs()))
+                .message(message)
                 .timestamp(Instant.now())
                 .path(request.getRequestURI())
                 .traceId(request.getHeader(HeaderConstants.CORRELATION_ID))
                 .build();
 
         return ResponseEntity.status(status).body(errorResponse);
+    }
+
+    private boolean isSafeClientMessage(String msg) {
+        if (msg == null || msg.isBlank() || msg.length() > 250) {
+            return false;
+        }
+        String lower = msg.toLowerCase();
+        return !lower.contains("exception")
+                && !lower.contains("sql")
+                && !lower.contains("nullpointer")
+                && !lower.contains("org.springframework")
+                && !lower.contains("com.techmart")
+                && !lower.contains(".java:")
+                && !lower.contains("syntax error")
+                && !lower.contains("violates")
+                && !lower.contains("constraint")
+                && !lower.contains("table \"")
+                && !lower.contains("column \"");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -66,6 +93,22 @@ public class GlobalExceptionHandler {
                 .path(request.getRequestURI())
                 .traceId(request.getHeader(HeaderConstants.CORRELATION_ID))
                 .errors(fieldErrors)
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        log.warn("[GlobalExceptionHandler][handleMaxUploadSizeExceededException] Upload size exceeded limit: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .code(ResponseCode.FILE_TOO_LARGE.getCode())
+                .message(MessageUtils.getMessage(ResponseCode.FILE_TOO_LARGE))
+                .timestamp(Instant.now())
+                .path(request.getRequestURI())
+                .traceId(request.getHeader(HeaderConstants.CORRELATION_ID))
                 .build();
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);

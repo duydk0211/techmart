@@ -78,6 +78,19 @@ public class GatewaySecurityConfig {
                 // --- Phase 1 User & Auth Endpoints ---
                 .requestMatchers("/api/v1/users/me/addresses/**").hasRole("CUSTOMER")
                 .requestMatchers("/api/v1/auth/logout", "/api/v1/auth/change-password", "/api/v1/users/me/**").authenticated()
+
+                // --- Phase 4 Metrics Endpoints ---
+                .requestMatchers("/api/v1/admin/metrics/system-health").hasRole("ADMIN")
+                .requestMatchers("/api/v1/admin/metrics/**").hasAnyRole("STAFF", "ADMIN")
+
+                // --- Phase 4 Storage Endpoints ---
+                .requestMatchers(HttpMethod.POST, "/api/v1/files/upload").hasAnyRole("CUSTOMER", "STAFF", "ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/files/**").hasRole("ADMIN")
+
+                // --- Phase 4 Banner Endpoints ---
+                .requestMatchers(HttpMethod.GET, "/api/v1/banners").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/banners").hasAnyRole("STAFF", "ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/banners/**").hasRole("ADMIN")
                 .anyRequest().denyAll()
             )
             .addFilterBefore(correlationIdFilter, UsernamePasswordAuthenticationFilter.class)

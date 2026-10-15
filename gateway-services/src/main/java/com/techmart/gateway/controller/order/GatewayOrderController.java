@@ -1,6 +1,7 @@
 package com.techmart.gateway.controller.order;
 
 import com.techmart.gateway.client.CoreClient;
+import com.techmart.shared.constant.HeaderConstants;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,8 +30,9 @@ public class GatewayOrderController {
     }
 
     @PostMapping
-    public ResponseEntity<Object> createOrder(@RequestBody Object body) {
-        log.info("[GatewayOrderController][createOrder] Proxying createOrder to core-service");
+    public ResponseEntity<Object> createOrder(@RequestBody Object body, HttpServletRequest request) {
+        String idempotencyKey = request.getHeader(HeaderConstants.IDEMPOTENCY_KEY);
+        log.info("[GatewayOrderController][createOrder] Proxying createOrder to core-service (Idempotency-Key: {})", idempotencyKey);
         return coreClient.forward(HttpMethod.POST, "/internal/api/v1/orders", body, Object.class);
     }
 
