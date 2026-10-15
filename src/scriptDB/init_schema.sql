@@ -447,6 +447,67 @@ CREATE TABLE IF NOT EXISTS banners (
     CONSTRAINT fk_banners_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- ----------------------------------------------------------------------------------------------------
+-- TABLE 17: notification_logs
+-- PURPOSE & BUSINESS LOGIC:
+--   - Tracks complete history and status of all outgoing notifications (Email, SMS, In-App).
+--   - Guarantees Kafka Consumer Idempotency via unique 'event_id' constraint (RFC 9562 UUID v7).
+--   - Stores resolved bilingual content ('rendered_subject', 'rendered_content') for legal/audit review.
+--   - Tracks delivery state ('PENDING', 'SENT', 'FAILED'), retry attempts, and underlying error messages.
+-- ----------------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS notification_logs (
+    id UUID PRIMARY KEY,
+    event_id VARCHAR(100) NOT NULL,
+    notification_type VARCHAR(50) NOT NULL,
+    language VARCHAR(10) NOT NULL DEFAULT 'vi',
+    recipient_email VARCHAR(150) NOT NULL,
+    recipient_user_id UUID,
+    rendered_subject VARCHAR(255) NOT NULL,
+    rendered_content TEXT NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    sent_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID,
+    updated_by UUID,
+    CONSTRAINT uq_notification_logs_event_id UNIQUE (event_id),
+    CONSTRAINT chk_notification_logs_language CHECK (language IN ('vi', 'en')),
+    CONSTRAINT chk_notification_logs_status CHECK (status IN ('PENDING', 'SENT', 'FAILED')),
+    CONSTRAINT chk_notification_logs_retry CHECK (retry_count >= 0),
+    CONSTRAINT fk_notification_logs_user FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_notification_logs_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_notification_logs_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- ----------------------------------------------------------------------------------------------------
+-- TABLE 18: stock_alert_cooldown
+-- PURPOSE & BUSINESS LOGIC:
+--   - Implements anti-spam debounce/cooldown mechanism for operational inventory notifications.
+--   - Prevents overwhelming Admin/Staff with repeated alerts for the same SKU at the same branch.
+--   - State remains active ('is_resolved' = FALSE) until stock is replenished via 'adjustInventory'.
+--   - Uniqueness constraint enforces at most one active cooldown record per (branch, variant, alert_type).
+-- ----------------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stock_alert_cooldown (
+    id UUID PRIMARY KEY,
+    branch_id UUID NOT NULL,
+    variant_id UUID NOT NULL,
+    alert_type VARCHAR(30) NOT NULL,
+    quantity_at_alert INTEGER NOT NULL,
+    is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
+    last_notified_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID,
+    updated_by UUID,
+    CONSTRAINT uq_stock_alert_state UNIQUE (branch_id, variant_id, alert_type, is_resolved),
+    CONSTRAINT chk_stock_alert_type CHECK (alert_type IN ('LOW_STOCK_ALERT', 'OUT_OF_ORDER')),
+    CONSTRAINT fk_stock_alert_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+    CONSTRAINT fk_stock_alert_variant FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE,
+    CONSTRAINT fk_stock_alert_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_stock_alert_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
 -- ====================================================================================================
 -- PART 3: PERFORMANCE INDEXES (B-TREE, GIN JSONB, GIN TRIGRAM)
 -- ====================================================================================================
@@ -565,4 +626,18 @@ CREATE INDEX IF NOT EXISTS idx_idempotency_expiry
 CREATE INDEX IF NOT EXISTS idx_banners_active_order_created 
     ON banners (active, display_order ASC, created_at DESC);
 
+-- 13. Indexes on 'notification_logs'
+CREATE INDEX IF NOT EXISTS idx_noti_logs_type_status
+    ON notification_logs (notification_type, status);
+
+CREATE INDEX IF NOT EXISTS idx_noti_logs_recipient_created
+    ON notification_logs (recipient_email, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_noti_logs_created_at
+    ON notification_logs (created_at DESC);
+
+-- 14. Indexes on 'stock_alert_cooldown'
+CREATE INDEX IF NOT EXISTS idx_stock_alert_active_lookup
+    ON stock_alert_cooldown (branch_id, variant_id, alert_type)
+    WHERE is_resolved = FALSE;
 
